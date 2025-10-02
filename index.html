@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ro">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Detector Pneumonie</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; max-width: 900px; margin: auto; }
+    #preview { max-width: 100%; max-height: 300px; border: 1px solid #ddd; border-radius: 6px; }
+    #result { font-size: 20px; margin-top: 10px; font-weight: 700; padding: 8px; border-radius: 6px; display:inline-block; }
+    #status { margin-bottom: 10px; color: #555; }
+  </style>
+</head>
+<body>
+  <h1>Detector Pneumonie (versiune rapidă)</h1>
+  <div id="status">Se încarcă modelul...</div>
+
+  <input type="file" id="upload" accept="image/*" disabled />
+  <div style="margin-top:16px;">
+    <img id="preview" src="" alt="" style="display:none;" />
+  </div>
+  <div id="result"></div>
+
+  <script>
+    async function init() {
+      const statusEl = document.getElementById('status');
+      const uploadEl = document.getElementById('upload');
+      const previewEl = document.getElementById('preview');
+      const resultEl = document.getElementById('result');
+
+      try {
+        await tf.ready();
+        statusEl.innerText = 'Încarcare model...';
+        // Încarcă modelul (cale relativă în repo: tfjs_model/model.json)
+        const model = await tf.loadLayersModel('./tfjs_model/model.json', { strict: false });
+        window.__MODEL__ = model;
+        statusEl.innerText = 'Model încărcat ✅. Alege o radiografie.';
+        uploadEl.disabled = false;
+
+        uploadEl.addEventListener('change', async (e) => {
+          const file = e.target.files[0];
+          if (!file) return;
+          previewEl.style.display = 'none';
+          resultEl.innerText = '';
+          const url = URL.createObjectURL(file);
+          const img = new Image();
+          img.src = url;
+          await new Promise(r => img.onload = r);
+          previewEl.src = url;
+          previewEl.style.display = 'block';
+
+          // Preprocesare și predicție
+          const tensor = tf.browser.fromPixels(img)
+            .resizeNearestNeighbor([224, 224])
+            .toFloat()
+            .div(tf.scalar(255.0))
+            .expandDims(0);
+          try {
+            const pred = model.predict(tensor);
+            const arr = await pred.data();
+            const score = arr[0];
+            const label = score > 0.5 ? "PNEUMONIE" : "NORMAL";
+            const pct = (score*100).toFixed(2);
+            resultEl.style.color = score > 0.5 ? '#d32f2f' : '#388e3c';
+            resultEl.style.background = score > 0.5 ? '#ffebee' : '#e8f5e9';
+            resultEl.innerText = `${label} — scor: ${pct}%`;
+            tf.dispose([tensor, pred]);
+          } catch(err) {
+            console.error(err);
+            resultEl.innerText = 'Eroare la predicție. Vezi consola.';
+          }
+        });
+
+      } catch (err) {
+        console.error(err);
+        statusEl.innerText = 'Eroare la încărcarea modelului. Verifică console/network.';
+      }
+    }
+    init();
+  </script>
+</body>
+</html>
